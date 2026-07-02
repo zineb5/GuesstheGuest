@@ -1,4 +1,4 @@
-# Global Guess — Intelligence Network
+# GuesstheGuest
 
 A rotating-selector, team-based deduction game where one player thinks of a person (real, fictional, historical, or personal) and others ask yes/no questions to guess who it is.
 

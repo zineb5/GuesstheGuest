@@ -231,6 +231,7 @@ export interface WikiFacts {
 export interface FactSuggestion {
   answer: 'Yes' | 'No' | 'Unknown'
   reason: string
+  source?: 'structured' | 'llm' | 'unavailable'
 }
 
 const nationalityAliases: Record<string, string[]> = {
@@ -298,18 +299,20 @@ const axiosWiki = axios.create({
 
 const llmCache = new Map<string, FactSuggestion>()
 
-function buildLLMPrompt(question: string, referenceExtract: string, infobox?: InfoboxData): string {
+function buildLLMPrompt(question: string, referenceExtract: string, facts: WikiFacts | undefined, targetName: string | undefined): string {
   return `You are a fact-checking assistant for a guessing game.
 Answer ONLY Yes, No, or Unknown.
-Prefer the reference text and infobox below when they contain the answer.
-If they do not contain enough information, you may use your general knowledge about well-known public figures and fictional characters.
+Prefer the reference text and facts below when they contain the answer.
+If they do not contain enough information, you may use your general knowledge about ${targetName || 'the target'}.
 If the answer is still unclear, subjective, or not reliably knowable, say Unknown.
+
+Target: ${targetName || 'Unknown target'}
 
 Reference text:
 ${referenceExtract || 'No reference extract available.'}
 
-Infobox:
-${infobox ? JSON.stringify(infobox, null, 2) : 'No infobox available.'}
+Known facts:
+${facts ? JSON.stringify(facts, null, 2) : 'No structured facts available.'}
 
 Question: ${question}
 Answer (Yes / No / Unknown):`
@@ -331,49 +334,75 @@ function hashText(value: string): string {
   return String(hash)
 }
 
+const FALLBACK_MODELS = ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'] as const
+
+async function callGemini(
+  model: string,
+  question: string,
+  referenceExtract: string,
+  facts: WikiFacts | undefined,
+  targetName: string | undefined
+): Promise<FactSuggestion | null> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
+  if (!apiKey) return null
+
+  const prompt = buildLLMPrompt(question, referenceExtract, facts, targetName)
+  const { data } = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 20,
+      },
+    },
+    { timeout: 10000, headers: { 'Content-Type': 'application/json' } }
+  )
+
+  const outputText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const answer = parseLLMResponse(outputText)
+  return {
+    answer,
+    reason: answer === 'Unknown'
+      ? 'The AI assistant could not determine a clear answer from the reference.'
+      : `AI assistant suggests ${answer}.`,
+    source: 'llm',
+  }
+}
+
 export async function askLLM(
   question: string,
   referenceExtract: string,
-  infobox?: InfoboxData
+  facts?: WikiFacts,
+  targetName?: string
 ): Promise<FactSuggestion | null> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-  const model = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-1.5-flash'
+  const configuredModel = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || FALLBACK_MODELS[0]
+  if (!configuredModel) return null
 
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
   if (!apiKey) return null
 
-  const cacheKey = `${question}|${hashText(referenceExtract)}|${hashText(JSON.stringify(infobox || {}))}`
+  const cacheKey = `${question}|${hashText(referenceExtract)}|${hashText(JSON.stringify(facts || {}))}|${hashText(targetName || '')}|${configuredModel}`
   const cached = llmCache.get(cacheKey)
   if (cached) return cached
 
-  try {
-    const prompt = buildLLMPrompt(question, referenceExtract, infobox)
-    const { data } = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 20,
-        },
-      },
-      { timeout: 6000, headers: { 'Content-Type': 'application/json' } }
-    )
+  const modelsToTry = [configuredModel, ...FALLBACK_MODELS.filter(m => m !== configuredModel)]
 
-    const outputText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const answer = parseLLMResponse(outputText)
-    const suggestion: FactSuggestion = {
-      answer,
-      reason: answer === 'Unknown'
-        ? 'The AI assistant could not determine a clear answer from the reference.'
-        : `AI assistant suggests ${answer} based on the reference.`,
+  for (const model of modelsToTry) {
+    try {
+      const result = await callGemini(model, question, referenceExtract, facts, targetName)
+      if (result) {
+        llmCache.set(cacheKey, result)
+        return result
+      }
+    } catch (err: any) {
+      const status = err?.response?.status
+      console.warn(`LLM fallback failed for model ${model}:`, status ?? err?.message ?? err)
+      if (status === 400 || status === 401 || status === 403) break
     }
-
-    llmCache.set(cacheKey, suggestion)
-    return suggestion
-  } catch (err) {
-    console.warn('LLM fallback failed:', err)
-    return null
   }
+
+  return null
 }
 
 /** Fix protocol-relative URLs (//example.com â†’ https://example.com) */
@@ -1119,7 +1148,7 @@ function suggestAnswerStructured(question: string, facts?: WikiFacts, referenceE
   const infobox = facts?.infobox
 
   // Real / fictional
-  if (/\b(real|real person|actual person|fictional|made up|made-up|character)\b/.test(q) && facts?.isFictional !== undefined) {
+  if (/\b(real|real person|actual person|fictional|made up|made-up)\b/.test(q) && facts?.isFictional !== undefined) {
     const asksReal = /\b(real|real person|actual person)\b/.test(q)
     const rawAnswer = asksReal ? !facts.isFictional : facts.isFictional
     const answer = flipIfNegated(rawAnswer, negated)
@@ -1314,19 +1343,20 @@ function suggestAnswerStructured(question: string, facts?: WikiFacts, referenceE
 export async function suggestAnswer(
   question: string,
   facts?: WikiFacts,
-  referenceExtract = ''
+  referenceExtract = '',
+  targetName?: string
 ): Promise<FactSuggestion> {
   const structured = suggestAnswerStructured(question, facts, referenceExtract)
   if (structured.answer !== 'Unknown') return structured
-  if (!referenceExtract) return structured
+  if (!referenceExtract && !targetName) return structured
 
   try {
-    const llm = await askLLM(question, referenceExtract, facts?.infobox)
+    const llm = await askLLM(question, referenceExtract, facts, targetName)
     if (llm) return llm
   } catch {
     // Silently fall back to Unknown so the selector is never blocked.
   }
-  return structured
+  return { ...structured, source: 'unavailable', reason: 'AI assistant is currently unavailable.' }
 }
 
 export async function getWikipediaSummary(title: string): Promise<{ description: string; imageUrl?: string; pageUrl?: string } | null> {

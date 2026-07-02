@@ -12,7 +12,7 @@ function formatDuration(totalSeconds: number): string {
 export function CreateScreen() {
   const setScreen = useGameStore((state) => state.setScreen)
   const createRoom = useGameStore((state) => state.createRoom)
-  const [gameName, setGameName] = useState('Friday Night Deduction')
+  const [gameName, setGameName] = useState('GuesstheGuest Room')
   const [mode, setMode] = useState<'timer' | 'qlimit'>('timer')
   const [timerLimit, setTimerLimit] = useState(180)
   const [questionLimit, setQuestionLimit] = useState(30)
@@ -32,10 +32,26 @@ export function CreateScreen() {
     setCreating(false)
   }
 
-  const copyCode = () => {
-    navigator.clipboard.writeText(createdCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const copyCode = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(createdCode)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = createdCode
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy room code:', err)
+      alert('Could not copy automatically. Please select and copy the code manually.')
+    }
   }
 
   if (createdCode) {
@@ -93,7 +109,7 @@ export function CreateScreen() {
                 value={gameName}
                 onChange={(e) => setGameName(e.target.value)}
                 className="w-full bg-black/20 border-b border-outline-variant focus:border-primary py-3 px-3 text-on-surface outline-none"
-                placeholder="e.g. Friday Night Deduction"
+                placeholder="e.g. GuesstheGuest Room"
               />
             </div>
 

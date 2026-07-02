@@ -5,10 +5,11 @@ interface SmartSuggestionProps {
   question: string
   facts?: WikiFacts
   referenceExtract?: string
+  targetName?: string
   children: (suggestion: FactSuggestion, loading: boolean) => React.ReactNode
 }
 
-export function SmartSuggestion({ question, facts, referenceExtract, children }: SmartSuggestionProps) {
+export function SmartSuggestion({ question, facts, referenceExtract, targetName, children }: SmartSuggestionProps) {
   const [state, setState] = useState<{ suggestion: FactSuggestion; loading: boolean }>({
     suggestion: { answer: 'Unknown', reason: 'Checking facts…' },
     loading: true,
@@ -18,7 +19,7 @@ export function SmartSuggestion({ question, facts, referenceExtract, children }:
     let cancelled = false
     setState({ suggestion: { answer: 'Unknown', reason: 'Checking facts…' }, loading: true })
 
-    suggestAnswer(question, facts, referenceExtract).then((suggestion) => {
+    suggestAnswer(question, facts, referenceExtract, targetName).then((suggestion) => {
       if (cancelled) return
       setState({ suggestion, loading: false })
     })
@@ -26,7 +27,7 @@ export function SmartSuggestion({ question, facts, referenceExtract, children }:
     return () => {
       cancelled = true
     }
-  }, [question, facts, referenceExtract])
+  }, [question, facts, referenceExtract, targetName])
 
   return <>{children(state.suggestion, state.loading)}</>
 }

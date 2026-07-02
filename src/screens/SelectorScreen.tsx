@@ -194,7 +194,7 @@ export function SelectorScreen() {
                 <p className="text-sm text-on-surface mb-3">
                   <span className="text-secondary-container font-bold">{q.askerName}:</span> {q.text}
                 </p>
-                <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract}>
+                <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract} targetName={target?.name}>
                   {(suggestion, loading) => (
                     <>
                       <div className="flex gap-2">
@@ -232,7 +232,7 @@ export function SelectorScreen() {
                     {q.answer}
                   </span>
                 </p>
-                <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract}>
+                <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract} targetName={target?.name}>
                   {(suggestion, loading) => {
                     if (loading) return null
                     const conflicts = suggestion.answer !== 'Unknown' && suggestion.answer !== q.answer

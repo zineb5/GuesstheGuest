@@ -128,7 +128,7 @@ export function GuesserScreen() {
                       <span className="text-sm text-on-surface">{q.text}</span>
                     </div>
                     {q.answer !== '...' && (
-                      <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract}>
+                      <SmartSuggestion question={q.text} facts={target?.referenceFacts} referenceExtract={target?.referenceExtract} targetName={target?.name}>
                         {(suggestion, loading) => {
                           if (loading) return null
                           const conflicts = suggestion.answer !== 'Unknown' && suggestion.answer !== q.answer

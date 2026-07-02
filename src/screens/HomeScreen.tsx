@@ -50,7 +50,7 @@ export function HomeScreen() {
       <header className="flex justify-between items-center px-8 py-4 max-w-7xl mx-auto pt-8 w-full">
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-primary text-2xl">fingerprint</span>
-          <span className="font-sora text-xl font-extrabold text-primary">Global Guess</span>
+          <span className="font-sora text-xl font-extrabold text-primary">GuesstheGuest</span>
         </div>
         <span className="text-xs text-on-surface-variant">v2.0 — Multiplayer</span>
       </header>
